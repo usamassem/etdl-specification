@@ -1,0 +1,714 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/usamassem/etdl-specification/blob/main/schemas/etdl.schema.json",
+  "title": "ETDL Document",
+  "description": "JSON Schema for an ETDL Conforming Document (structural subset of Sections 4-5 and the Section 6.2 grammar). Rules requiring computed values (probability sums, reference resolution, ECEL type checking) are enforced by a Conforming Parser/Compiler per Section 7.",
+  "type": "object",
+  "required": [
+    "etdl",
+    "info"
+  ],
+  "properties": {
+    "etdl": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "description": "SemVer of the ETDL specification (Section 5.1)."
+    },
+    "info": {
+      "type": "object",
+      "required": [
+        "title",
+        "version",
+        "domain"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9]*$"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "asyncapi_imports": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "supplements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/supplement"
+      },
+      "uniqueItems": true
+    },
+    "components": {
+      "type": "object",
+      "properties": {
+        "barriers": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/barrier"
+          }
+        },
+        "operations": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/operation"
+          }
+        },
+        "gates": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/gate"
+          }
+        },
+        "basicEvents": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/basicEvent"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventTrees": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/eventTree"
+      }
+    },
+    "eventTree": {
+      "$ref": "#/$defs/eventTree"
+    },
+    "faultTrees": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/faultTree"
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "eventTrees"
+      ]
+    },
+    {
+      "required": [
+        "eventTree"
+      ]
+    },
+    {
+      "required": [
+        "supplements"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "eventTrees"
+            ]
+          },
+          {
+            "required": [
+              "eventTree"
+            ]
+          },
+          {
+            "required": [
+              "faultTrees"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "eventTree": {
+      "type": "object",
+      "required": [
+        "initiatingEvent",
+        "nodes"
+      ],
+      "properties": {
+        "initiatingEvent": {
+          "$ref": "#/$defs/initiatingEvent"
+        },
+        "nodes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false
+    },
+    "initiatingEvent": {
+      "type": "object",
+      "required": [
+        "id",
+        "message",
+        "next"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "next": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false
+    },
+    "supplement": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^etdl\\.[a-z0-9-]+$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(\\.(0|[1-9]\\d*))?$"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "patternProperties": {
+              "^x-": {}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false
+    },
+    "node": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/barrier"
+        },
+        {
+          "$ref": "#/$defs/operation"
+        },
+        {
+          "$ref": "#/$defs/consequence"
+        }
+      ]
+    },
+    "barrier": {
+      "type": "object",
+      "required": [
+        "type",
+        "branches"
+      ],
+      "properties": {
+        "type": {
+          "const": "barrier"
+        },
+        "branches": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/branch"
+          }
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false
+    },
+    "branch": {
+      "type": "object",
+      "required": [
+        "condition",
+        "next",
+        "outcome"
+      ],
+      "properties": {
+        "outcome": {
+          "type": "string"
+        },
+        "condition": {
+          "type": "string"
+        },
+        "probability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "probabilityOfSuccess": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "probabilityOfFailure": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "probabilitySource": {
+          "type": "string"
+        },
+        "next": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "probability"
+          ]
+        },
+        {
+          "required": [
+            "probabilityOfSuccess"
+          ]
+        },
+        {
+          "required": [
+            "probabilityOfFailure"
+          ]
+        },
+        {
+          "required": [
+            "probabilitySource"
+          ]
+        }
+      ]
+    },
+    "operation": {
+      "type": "object",
+      "required": [
+        "type",
+        "handler",
+        "next",
+        "action"
+      ],
+      "properties": {
+        "type": {
+          "const": "operation"
+        },
+        "action": {
+          "enum": [
+            "execute"
+          ]
+        },
+        "handler": {
+          "type": "string"
+        },
+        "emits": {
+          "type": "string"
+        },
+        "next": {
+          "type": "string"
+        },
+        "onFailure": {
+          "type": "string"
+        },
+        "onFailureProbabilitySource": {
+          "type": "string"
+        },
+        "retryPolicy": {
+          "$ref": "#/$defs/retryPolicy"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false
+    },
+    "retryPolicy": {
+      "type": "object",
+      "properties": {
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "backoffMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "backoffStrategy": {
+          "enum": [
+            "fixed",
+            "exponential"
+          ]
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false
+    },
+    "consequence": {
+      "type": "object",
+      "required": [
+        "type",
+        "operation"
+      ],
+      "properties": {
+        "type": {
+          "const": "consequence"
+        },
+        "operation": {
+          "enum": [
+            "send",
+            "terminate"
+          ]
+        },
+        "channel": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "send"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "channel",
+              "message"
+            ]
+          }
+        }
+      ]
+    },
+    "faultTree": {
+      "type": "object",
+      "required": [
+        "topEvent",
+        "basicEvents"
+      ],
+      "properties": {
+        "topEvent": {
+          "$ref": "#/$defs/topEvent"
+        },
+        "gates": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/gate"
+          }
+        },
+        "basicEvents": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/basicEvent"
+          }
+        },
+        "transfers": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/transfer"
+          }
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false
+    },
+    "topEvent": {
+      "type": "object",
+      "required": [
+        "id",
+        "description",
+        "rootCause"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "rootCause": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false
+    },
+    "gate": {
+      "type": "object",
+      "required": [
+        "type",
+        "inputs"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "AND",
+            "OR",
+            "NOT",
+            "XOR",
+            "VOTING",
+            "INHIBIT",
+            "PRIORITY_AND"
+          ]
+        },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "k": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "inhibitCondition": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "VOTING"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "k"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "INHIBIT"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "inhibitCondition"
+            ]
+          }
+        }
+      ]
+    },
+    "basicEvent": {
+      "type": "object",
+      "required": [
+        "description"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "probability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "failureRate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "missionTime": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "undeveloped": {
+          "type": "boolean"
+        },
+        "eventType": {
+          "enum": [
+            "basic",
+            "house",
+            "undeveloped",
+            "conditional"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "oneOf": [
+            {
+              "required": [
+                "probability"
+              ],
+              "not": {
+                "required": [
+                  "failureRate"
+                ]
+              }
+            },
+            {
+              "required": [
+                "failureRate"
+              ],
+              "not": {
+                "required": [
+                  "probability"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "minProperties": 2,
+          "patternProperties": {
+            "^x-": {}
+          }
+        }
+      ]
+    },
+    "transfer": {
+      "type": "object",
+      "required": [
+        "target"
+      ],
+      "properties": {
+        "target": {
+          "type": "string",
+          "pattern": "^#/faultTrees/.+"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      },
+      "additionalProperties": false
+    }
+  },
+  "patternProperties": {
+    "^x-": {}
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "required": [
+        "etdl",
+        "info"
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "asyncapi_imports"
+          ]
+        },
+        {
+          "required": [
+            "supplements"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "eventTrees"
+                ]
+              },
+              {
+                "required": [
+                  "eventTree"
+                ]
+              },
+              {
+                "required": [
+                  "faultTrees"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

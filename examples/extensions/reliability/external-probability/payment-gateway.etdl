@@ -1,0 +1,36 @@
+# External reliability-data document (payment-gateway.etdl)
+# Produced by an external reliability calculation. A data-only .etdl document:
+# it declares etdl.reliability, carries no Event/Fault Trees, and holds its
+# reliability content in its x-reliability block (core Section 5.1).
+etdl: "1.0.0"
+info:
+  title: "Payment gateway reliability data"
+  version: "1.0.0"
+  domain: "PaymentsContext"
+supplements:
+  - id: etdl.reliability
+    version: "1.0"
+x-reliability:
+  probabilityEstimates:
+    - id: est.gateway-timeout
+      event: failure.database.timeout
+      state: estimated
+      value: 0.0021
+      metric: probability
+      population: production-orders
+      unitTimeBasis: per-request
+      provenance:
+        sourceType: external-calculation
+        model: vendor-reliability-model-v3
+        modelVersion: "3.1"
+        generatedAt: "2026-08-16T12:00:00Z"
+    - id: est.gateway-unreachable
+      event: failure.network.unreachable
+      state: estimated
+      value: 0.0012
+      metric: probability
+      population: production-orders
+      unitTimeBasis: per-request
+      provenance:
+        sourceType: measurement
+        dataset: production-2026-Q2

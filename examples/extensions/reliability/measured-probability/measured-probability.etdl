@@ -1,0 +1,55 @@
+etdl: "1.0.0"
+info:
+  title: "Measured probability with provenance"
+  version: "1.0.0"
+  domain: "PaymentsContext"
+asyncapi_imports:
+  payment_api: "./asyncapi/payments.yaml"
+supplements:
+  - id: etdl.reliability
+    version: "1.0"
+eventTrees:
+  PaymentProcessing:
+    initiatingEvent:
+      id: PaymentRequested
+      message: "payment_api#/components/messages/PaymentRequested"
+      next: PaymentFailed
+    nodes:
+      PaymentFailed:
+        type: consequence
+        operation: terminate
+faultTrees:
+  PaymentGatewayFailure:
+    topEvent:
+      id: PaymentCaptureFailed
+      description: "A charge capture fails."
+      rootCause: GatewayTimeout
+    basicEvents:
+      GatewayTimeout:
+        description: "Gateway did not respond in time."
+        probability: 0.0021
+# Rich measured estimate attached via x-reliability (extension field, core
+# semantics unchanged). The core `probability` field stays the deterministic
+# value; the estimate documents provenance and uncertainty.
+x-reliability:
+  unknownPolicy: "warning"
+  probabilityEstimates:
+    - id: est.gateway-timeout
+      event: failure.database.timeout
+      state: measured
+      value: 0.0021
+      metric: probability
+      population: production-orders
+      unitTimeBasis: per-request
+      uncertainty:
+        kind: confidence-interval
+        level: 0.95
+        lower: 0.0015
+        upper: 0.0030
+      provenance:
+        sourceType: measurement
+        dataset: production-2026-Q2
+        model: reliability-model-v3
+        modelVersion: "3.1"
+        generatedAt: "2026-08-16T12:00:00Z"
+      status: reviewed

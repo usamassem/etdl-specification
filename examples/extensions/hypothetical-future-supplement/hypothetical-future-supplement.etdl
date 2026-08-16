@@ -1,0 +1,46 @@
+# Hypothetical future supplement — proof the mechanism is generic.
+# Uses a NON-reliability supplement (etdl.performance) to show the mechanism is
+# domain-neutral. No such supplement is defined in this repository.
+etdl: "1.0.0"
+info:
+  title: "Performance-annotated event tree (hypothetical)"
+  version: "1.0.0"
+  domain: "FulfillmentContext"
+asyncapi_imports:
+  orders_api: "./asyncapi/orders.yaml"
+supplements:
+  - id: etdl.performance
+    version: "1.0"
+    required: false
+eventTrees:
+  OrderFulfillment:
+    initiatingEvent:
+      id: OrderPlacedTrigger
+      message: "orders_api#/components/messages/OrderPlaced"
+      next: InventoryCheckBarrier
+    nodes:
+      InventoryCheckBarrier:
+        type: barrier
+        branches:
+          - outcome: SUCCESS
+            condition: "message.payload.items[*].qty > 0"
+            probability: 0.95
+            next: FulfillmentConsequence
+          - outcome: FAILURE
+            condition: default
+            probability: 0.05
+            next: OutOfStockConsequence
+      FulfillmentConsequence:
+        type: consequence
+        operation: terminate
+      OutOfStockConsequence:
+        type: consequence
+        operation: terminate
+# A hypothetical performance supplement would add latency/SLO metadata via an
+# extension field, exactly as the reliability supplement adds reliability
+# metadata. Core semantics are untouched.
+x-performance:
+  latencyTargets:
+    - operation: InventoryCheckBarrier
+      p95Ms: 120
+      p99Ms: 250

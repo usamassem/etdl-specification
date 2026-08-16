@@ -1,0 +1,31 @@
+etdl: "1.0.0"
+info:
+  title: "Core Only — no supplements"
+  version: "1.0.0"
+  domain: "FulfillmentContext"
+asyncapi_imports:
+  orders_api: "./asyncapi/orders.yaml"
+eventTrees:
+  OrderFulfillment:
+    initiatingEvent:
+      id: OrderPlacedTrigger
+      message: "orders_api#/components/messages/OrderPlaced"
+      next: InventoryCheckBarrier
+    nodes:
+      InventoryCheckBarrier:
+        type: barrier
+        branches:
+          - outcome: SUCCESS
+            condition: "message.payload.items[*].qty > 0"
+            probability: 0.95
+            next: FulfillmentConsequence
+          - outcome: FAILURE
+            condition: default
+            probability: 0.05
+            next: OutOfStockConsequence
+      FulfillmentConsequence:
+        type: consequence
+        operation: terminate
+      OutOfStockConsequence:
+        type: consequence
+        operation: terminate

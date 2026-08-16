@@ -1,0 +1,96 @@
+etdl: "1.0.0"
+info:
+  title: "Order Fulfillment Event Tree"
+  version: "2.0.0"
+  domain: "FulfillmentContext"
+  description: "Causal model of the order-to-fulfillment lifecycle, with payment failure quantified by a linked fault tree rather than asserted."
+
+asyncapi_imports:
+  orders_api: "./asyncapi/orders.yaml"
+  payment_api: "./asyncapi/payments.yaml"
+
+eventTrees:
+  OrderFulfillment:
+    description: "Primary causal path from order placement to fulfillment or terminal failure."
+    initiatingEvent:
+      id: OrderPlacedTrigger
+      message: "orders_api#/components/messages/OrderPlaced"
+      next: InventoryCheckBarrier
+
+    nodes:
+      InventoryCheckBarrier:
+        type: barrier
+        description: "Verifies stock availability across warehouse nodes."
+        branches:
+          - outcome: SUCCESS
+            condition: "message.payload.items[*].qty > 0"
+            probability: 0.95
+            next: ProcessPaymentOperation
+          - outcome: FAILURE
+            condition: "default"
+            probability: 0.05
+            next: OutOfStockConsequence
+
+      ProcessPaymentOperation:
+        type: operation
+        description: "Charges the customer's payment method via the Stripe handler."
+        action: execute
+        handler: "stripe_charge_handler"
+        emits: "payment_api#/components/messages/PaymentProcessed"
+        next: FulfillmentConsequence
+        onFailure: PaymentFailedConsequence
+        onFailureProbabilitySource: "#/faultTrees/PaymentGatewayFailure/topEvent"
+        retryPolicy:
+          maxAttempts: 3
+          backoffMs: 250
+          backoffStrategy: exponential
+        timeoutMs: 5000
+
+      FulfillmentConsequence:
+        type: consequence
+        description: "Order is successfully paid and broadcast to global fulfillment."
+        operation: send
+        channel: "orders_api#/channels/FulfillmentChannel"
+        message: "payment_api#/components/messages/PaymentProcessed"
+
+      OutOfStockConsequence:
+        type: consequence
+        description: "Order halted due to stock depletion; routed to dead-letter storage."
+        operation: send
+        channel: "orders_api#/channels/DeadLetterChannel"
+        message: "orders_api#/components/messages/InventoryFailed"
+
+      PaymentFailedConsequence:
+        type: consequence
+        description: "Payment could not be captured after retries; routed to dead-letter storage for manual review."
+        operation: send
+        channel: "orders_api#/channels/DeadLetterChannel"
+        message: "payment_api#/components/messages/PaymentFailed"
+
+faultTrees:
+  PaymentGatewayFailure:
+    description: "The payment gateway cannot successfully capture a charge."
+    topEvent:
+      id: PaymentCaptureFailed
+      description: "A charge attempt against the payment gateway does not succeed."
+      message: "payment_api#/components/messages/PaymentFailed"
+      rootCause: GatewayUnavailableOrRejected
+
+    gates:
+      GatewayUnavailableOrRejected:
+        type: OR
+        description: "Either the gateway could not be reached, or it actively rejected the charge."
+        inputs:
+          - GatewayUnreachable
+          - ChargeRejected
+
+    basicEvents:
+      GatewayUnreachable:
+        description: "Stripe API did not respond within the configured timeout."
+        probability: 0.008
+        message: "payment_api#/components/messages/GatewayTimeout"
+
+      ChargeRejected:
+        description: "Stripe API responded with a hard decline."
+        failureRate: 0.00021
+        missionTime: 24

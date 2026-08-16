@@ -1,0 +1,63 @@
+etdl: "1.0.0"
+info:
+  title: "External probability source"
+  version: "1.0.0"
+  domain: "PaymentsContext"
+asyncapi_imports:
+  payment_api: "./asyncapi/payments.yaml"
+supplements:
+  - id: etdl.reliability
+    version: "1.0"
+    required: true
+eventTrees:
+  PaymentProcessing:
+    initiatingEvent:
+      id: PaymentRequested
+      message: "payment_api#/components/messages/PaymentRequested"
+      next: ChargeBarrier
+    nodes:
+      ChargeBarrier:
+        type: barrier
+        branches:
+          - outcome: SUCCESS
+            condition: "message.payload.ok == true"
+            probability: 0.99
+            next: PaymentSucceeded
+          - outcome: FAILURE
+            condition: default
+            probability: 0.01
+            next: PaymentFailed
+      PaymentSucceeded:
+        type: consequence
+        operation: terminate
+      PaymentFailed:
+        type: consequence
+        operation: terminate
+faultTrees:
+  PaymentGatewayFailure:
+    topEvent:
+      id: PaymentCaptureFailed
+      description: "A charge capture fails."
+      rootCause: GatewayFailure
+    gates:
+      GatewayFailure:
+        type: OR
+        inputs:
+          - GatewayTimeout
+          - GatewayUnreachable
+    basicEvents:
+      GatewayTimeout:
+        description: "Gateway did not respond in time."
+        x-reliability:
+          source: payment_gateway
+          estimate: est.gateway-timeout
+      GatewayUnreachable:
+        description: "Gateway is unreachable."
+        x-reliability:
+          source: payment_gateway
+          estimate: est.gateway-unreachable
+x-reliability:
+  sources:
+    - id: payment_gateway
+      type: external
+      file: "./payment-gateway.etdl"

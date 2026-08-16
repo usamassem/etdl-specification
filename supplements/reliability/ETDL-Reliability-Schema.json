@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/usamassem/etdl-specification/blob/main/supplements/reliability/ETDL-Reliability-Schema.json",
+  "title": "ETDL Reliability Supplement 1.0",
+  "description": "Data model for the ETDL Reliability Supplement 1.0 (etdl.reliability@1.0). Defines the representation and semantics of reliability information; it does not implement statistical algorithms.",
+  "type": "object",
+  "properties": {
+    "reliability": {
+      "type": "object",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reliabilitySource" }
+        },
+        "ontology": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "unknownPolicy": {
+          "enum": ["error", "warning", "allow"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "failureModes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/failureMode" }
+    },
+    "candidateFailureModes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/candidateFailureMode" }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dependency" }
+    },
+    "commonCauseFailures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/commonCauseFailure" }
+    },
+    "probabilityConditions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/probabilityCondition" }
+    },
+    "probabilityEstimates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/probabilityEstimate" }
+    },
+    "reliabilityObservations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/reliabilityObservation" }
+    },
+    "reliabilityBuildProvenance": {
+      "$ref": "#/$defs/buildProvenance"
+    },
+    "x-*": {}
+  },
+  "$defs": {
+    "reliabilitySource": {
+      "type": "object",
+      "required": ["id", "type", "file"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "enum": ["external"] },
+        "file": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "failureMode": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^failure\\." },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "causes": { "type": "array", "items": { "type": "string" } },
+        "effects": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": { "patternProperties": { "^x-": {} } }
+    },
+    "candidateFailureMode": {
+      "type": "object",
+      "required": ["id", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "proposed": { "type": "string" },
+        "status": { "enum": ["candidate", "reviewed", "accepted", "rejected", "merged", "deprecated"] },
+        "evidence": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "dependency": {
+      "type": "object",
+      "required": ["id", "from", "to"],
+      "properties": {
+        "id": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "kind": { "enum": ["dependency", "causal", "statistical", "common-cause"] }
+      },
+      "additionalProperties": false
+    },
+    "commonCauseFailure": {
+      "type": "object",
+      "required": ["id", "cause", "failures"],
+      "properties": {
+        "id": { "type": "string" },
+        "cause": { "type": "string" },
+        "failures": { "type": "array", "items": { "type": "string" }, "minItems": 2 }
+      },
+      "additionalProperties": false
+    },
+    "probabilityCondition": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "expression": { "type": "string" },
+        "label": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "probabilityEstimate": {
+      "type": "object",
+      "required": ["id", "event", "state"],
+      "properties": {
+        "id": { "type": "string" },
+        "event": { "type": "string" },
+        "state": {
+          "enum": ["declared", "assumed", "measured", "estimated", "predicted", "inferred", "imported", "unknown"]
+        },
+        "value": { "type": "number", "minimum": 0, "maximum": 1 },
+        "metric": { "type": "string" },
+        "population": { "type": "string" },
+        "unitTimeBasis": { "type": "string" },
+        "conditions": { "type": "array", "items": { "type": "string" } },
+        "source": { "type": "string" },
+        "method": { "type": "string" },
+        "uncertainty": { "$ref": "#/$defs/uncertainty" },
+        "confidence": { "type": "number" },
+        "assumptions": { "type": "array", "items": { "type": "string" } },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "version": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "additionalProperties": { "patternProperties": { "^x-": {} } }
+    },
+    "uncertainty": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["confidence-interval", "credible-interval", "distribution", "lower-bound", "upper-bound"] },
+        "level": { "type": "number" },
+        "lower": { "type": "number" },
+        "upper": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "sourceType": {
+          "enum": ["engineering-assumption", "measurement", "historical-data", "prediction", "statistical-model", "external-calculation", "vendor-data", "simulation", "inference", "unknown"]
+        },
+        "dataset": { "type": "string" },
+        "model": { "type": "string" },
+        "modelVersion": { "type": "string" },
+        "generatedAt": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "reliabilityObservation": {
+      "type": "object",
+      "required": ["id", "event", "timestamp", "outcome"],
+      "properties": {
+        "id": { "type": "string" },
+        "event": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "service": { "type": "string" },
+        "operation": { "type": "string" },
+        "environment": { "type": "string" },
+        "outcome": { "type": "string" },
+        "conditions": { "type": "array", "items": { "type": "string" } },
+        "durationMs": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": { "patternProperties": { "^x-": {} } }
+    },
+    "buildProvenance": {
+      "type": "object",
+      "properties": {
+        "etdlVersion": { "type": "string" },
+        "supplementVersion": { "type": "string" },
+        "ontology": { "type": "array", "items": { "type": "string" } },
+        "artifacts": { "type": "array", "items": { "type": "string" } },
+        "models": { "type": "array", "items": { "type": "string" } },
+        "datasets": { "type": "array", "items": { "type": "string" } },
+        "compiler": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,53 @@
+etdl: "1.0.0"
+info:
+  title: "Common-cause failure representation"
+  version: "1.0.0"
+  domain: "PlatformContext"
+asyncapi_imports:
+  api: "./asyncapi/common.yaml"
+supplements:
+  - id: etdl.reliability
+    version: "1.0"
+eventTrees:
+  OrderProcessing:
+    initiatingEvent:
+      id: OrderPlaced
+      message: "api#/components/messages/Event"
+      next: Done
+    nodes:
+      Done:
+        type: consequence
+        operation: terminate
+faultTrees:
+  RegionOutageFailure:
+    topEvent:
+      id: RegionDown
+      description: "The region cannot process orders."
+      rootCause: RegionOrphaned
+    gates:
+      RegionOrphaned:
+        type: OR
+        inputs:
+          - DatabaseUnavailable
+          - NetworkUnavailable
+          - CacheUnavailable
+          - MessageBrokerUnavailable
+    basicEvents:
+      DatabaseUnavailable: { description: "db down", probability: 0.01 }
+      NetworkUnavailable: { description: "net down", probability: 0.005 }
+      CacheUnavailable: { description: "cache down", probability: 0.01 }
+      MessageBrokerUnavailable: { description: "broker down", probability: 0.01 }
+x-reliability:
+  unknownPolicy: "warning"
+  commonCauseFailures:
+    - id: ccf.region-outage
+      cause: RegionOutage
+      failures:
+        - failure.database.unavailable
+        - failure.network.unreachable
+        - failure.cache.unavailable
+        - failure.messaging.unavailable
+# NOTE: the AND/OR formulas above assume independence. The common-cause
+# relationship invalidates that naive assumption. This supplement requires that
+# CCF be represented and that any tool computing probabilities under CCF
+# documents the model used; it does not force a specific CCF probability model.

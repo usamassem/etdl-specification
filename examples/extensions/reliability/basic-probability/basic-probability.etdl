@@ -1,0 +1,37 @@
+etdl: "1.0.0"
+info:
+  title: "Basic probability — reliability supplement declared, core syntax unchanged"
+  version: "1.0.0"
+  domain: "FulfillmentContext"
+asyncapi_imports:
+  orders_api: "./asyncapi/orders.yaml"
+supplements:
+  - id: etdl.reliability
+    version: "1.0"
+eventTrees:
+  OrderFulfillment:
+    initiatingEvent:
+      id: OrderPlacedTrigger
+      message: "orders_api#/components/messages/OrderPlaced"
+      next: InventoryCheckBarrier
+    nodes:
+      InventoryCheckBarrier:
+        type: barrier
+        branches:
+          - outcome: SUCCESS
+            condition: "message.payload.items[*].qty > 0"
+            probability: 0.95
+            next: FulfillmentConsequence
+          - outcome: FAILURE
+            condition: default
+            probability: 0.05
+            next: OutOfStockConsequence
+      FulfillmentConsequence:
+        type: consequence
+        operation: terminate
+      OutOfStockConsequence:
+        type: consequence
+        operation: terminate
+# The core `probability` fields above remain fully valid and mean
+# `state: declared` under the reliability supplement. No supplement-specific
+# metadata is required for ordinary models.

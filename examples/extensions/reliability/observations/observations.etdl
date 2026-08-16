@@ -1,0 +1,51 @@
+etdl: "1.0.0"
+info:
+  title: "Runtime observations"
+  version: "1.0.0"
+  domain: "PaymentsContext"
+asyncapi_imports:
+  payment_api: "./asyncapi/payments.yaml"
+supplements:
+  - id: etdl.reliability
+    version: "1.0"
+eventTrees:
+  PaymentProcessing:
+    initiatingEvent:
+      id: PaymentRequested
+      message: "payment_api#/components/messages/PaymentRequested"
+      next: PaymentFailed
+    nodes:
+      PaymentFailed:
+        type: consequence
+        operation: terminate
+faultTrees:
+  PaymentGatewayFailure:
+    topEvent:
+      id: PaymentCaptureFailed
+      description: "A charge capture fails."
+      rootCause: GatewayTimeout
+    basicEvents:
+      GatewayTimeout:
+        description: "Gateway did not respond in time."
+        probability: 0.0021
+x-reliability:
+  reliabilityObservations:
+    - id: obs-2026-08-16-0001
+      event: failure.database.timeout
+      timestamp: "2026-08-16T12:00:00Z"
+      service: order-service
+      operation: process-payment
+      environment: production
+      outcome: failed
+      conditions: [ cond.high-load ]
+      durationMs: 2500
+    - id: obs-2026-08-16-0002
+      event: failure.database.timeout
+      timestamp: "2026-08-16T12:05:00Z"
+      service: order-service
+      operation: process-payment
+      environment: production
+      outcome: succeeded
+      durationMs: 2100
+# Observations are immutable evidence; they are appended, never rewritten.
+# The statistical model may change as observations accumulate.

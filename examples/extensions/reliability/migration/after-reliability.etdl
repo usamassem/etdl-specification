@@ -1,0 +1,45 @@
+# Migration — same document, Reliability Supplement 1.0 declared.
+# The original probability: 0.0021 remains valid and now means state: declared
+# under the reliability supplement. A richer, provenanced estimate is added via
+# an extension field.
+etdl: "1.0.0"
+info:
+  title: "Payment Gateway Failure (reliability supplement)"
+  version: "1.0.0"
+  domain: "PaymentsContext"
+asyncapi_imports:
+  payment_api: "./asyncapi/payments.yaml"
+supplements:
+  - id: etdl.reliability
+    version: "1.0"
+eventTrees:
+  PaymentProcessing:
+    initiatingEvent:
+      id: PaymentRequested
+      message: "payment_api#/components/messages/PaymentRequested"
+      next: PaymentFailed
+    nodes:
+      PaymentFailed:
+        type: consequence
+        operation: terminate
+faultTrees:
+  PaymentGatewayFailure:
+    topEvent:
+      id: PaymentCaptureFailed
+      description: "A charge capture fails."
+      rootCause: GatewayTimeout
+    basicEvents:
+      GatewayTimeout:
+        description: "Gateway did not respond in time."
+        probability: 0.0021
+x-reliability:
+  probabilityEstimates:
+    - id: est.gateway-timeout
+      event: failure.database.timeout
+      state: measured
+      value: 0.0021
+      provenance:
+        sourceType: measurement
+        dataset: production-2026-Q2
+        model: reliability-model-v3
+        modelVersion: "3.1"

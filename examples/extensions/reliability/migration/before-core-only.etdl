@@ -1,0 +1,30 @@
+# Migration — existing ETDL 1.0.0 document.
+# This is an ordinary ETDL 1.0.0 document with NO supplements. It remains fully
+# valid; the reliability supplement is opt-in.
+etdl: "1.0.0"
+info:
+  title: "Payment Gateway Failure (core only)"
+  version: "1.0.0"
+  domain: "PaymentsContext"
+asyncapi_imports:
+  payment_api: "./asyncapi/payments.yaml"
+eventTrees:
+  PaymentProcessing:
+    initiatingEvent:
+      id: PaymentRequested
+      message: "payment_api#/components/messages/PaymentRequested"
+      next: PaymentFailed
+    nodes:
+      PaymentFailed:
+        type: consequence
+        operation: terminate
+faultTrees:
+  PaymentGatewayFailure:
+    topEvent:
+      id: PaymentCaptureFailed
+      description: "A charge capture fails."
+      rootCause: GatewayTimeout
+    basicEvents:
+      GatewayTimeout:
+        description: "Gateway did not respond in time."
+        probability: 0.0021
