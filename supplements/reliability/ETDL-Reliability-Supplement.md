@@ -604,6 +604,11 @@ engineering review
 new build
 ```
 
+Section 33 makes this lifecycle normative for the specific case of comparing
+a predicted probability against accumulated observations (**calibration**)
+and states the non-mutation guarantee an implementation MUST uphold while
+doing so.
+
 ---
 
 ## 18. FMEA / FMECA mapping (optional)
@@ -733,13 +738,18 @@ reliabilityBuildProvenance:
 
 ---
 
-## 24. Future supplements
+## 24. Other core supplements
 
-The core mechanism supports future supplements (`etdl.safety`,
-`etdl.security`, `etdl.diagnostics`, `etdl.performance`) without core changes.
-Future supplements may add ontology, metadata, analysis profiles, evidence, and
-may compose with this supplement. The generic mechanism, not this supplement, is
-the architectural feature.
+The core mechanism supports additional supplements without core changes, and
+four now exist alongside this one: `etdl.safety`, `etdl.security`,
+`etdl.diagnostics`, and `etdl.performance` (each its own companion
+specification, core Appendix E.2). None of the four depend on this
+supplement, and this supplement depends on none of them — each reads its own
+`x-<domain>` extension field and, where relevant, the same core Barrier/Fault
+Tree structures this supplement reads, independently (core Section 11.2). A
+document MAY declare any combination of them alongside `etdl.reliability`.
+The generic supplement mechanism, not any one supplement, is the
+architectural feature.
 
 ---
 
@@ -760,11 +770,14 @@ the architectural feature.
 **Normative** (this supplement): syntax, schema, validation, semantics,
 compatibility, identifiers, versioning, probability states, provenance
 structure, the reliability-data `.etdl` artifact format, unknown-probability
-policy, observation structure.
+policy, observation structure, the predictive quantities and non-mutation
+guarantees of Section 32, and the calibration discipline and non-mutation
+guarantee of Section 33.
 
 **Informative** (not normative): recommended Bayesian/Monte-Carlo methods,
 FMEA scoring methodology, AI-assisted discovery, statistical methodology
-recommendations.
+recommendations, the specific statistical test used for calibration (Section
+33.3 requires disclosure of the method, not one particular method).
 
 ---
 
@@ -840,3 +853,207 @@ about it.
 | Probability artifact | Versioned |
 
 This enables reproducible engineering builds.
+
+---
+
+## 32. Predictive Reliability
+
+Every quantity defined elsewhere in this supplement — `ProbabilityEstimate`
+(Section 9), a Reliability Artifact's estimates (Section 13) — is a
+**time-independent** statement: an inference about a quantity from available
+evidence, with no future time horizon. This section defines the distinct
+concept of a **prediction**: an expected future outcome over a specified
+future time or exposure interval, computed from a time-to-failure model
+whose parameters typically originate from a `ProbabilityEstimate`. A
+prediction is never collapsed into, and never silently substitutes for, an
+estimate or an observation (Section 3's existing distinction between
+`Reliability` and `Reliability evidence` already establishes the estimate/
+evidence boundary this section extends to cover time).
+
+### 32.1 Predictive quantities
+
+| Quantity | Definition | Notes |
+|---|---|---|
+| `S(t)` — survival | `P(T > t)` | |
+| `R(t)` — reliability | `P(T > t)` | Identical formula to `S(t)`; named separately because, for a non-repairable system, "the system survives past `t`" and "the system remains reliable through `t`" are the same statement read in two domains. This supplement makes no claim about a repairable system beyond this section's stated scope. |
+| `F(t)` — failure probability | `P(T <= t) = 1 - S(t)` | |
+| `h(t)` — hazard | Instantaneous failure rate given survival to `t` | NOT a probability; not bounded to `[0,1]` in general (Section 10's failure-rate-vs-probability distinction applies to `h(t)` exactly as it does to a Basic Event's `failureRate`). |
+| `H(t)` — cumulative hazard | `-ln(S(t))`, or an equivalent closed form where one exists | |
+| `f(t)` — density | `h(t) * S(t)` | Defined for continuous models only. |
+
+A prediction result MUST identify which of these six quantities it reports,
+using a closed, named set — an implementation MUST NOT report a bare,
+unlabeled numeric value for a predictive quantity, precisely so that a
+hazard is never mistaken for a probability and a survival value is never
+silently reinterpreted as something else.
+
+### 32.2 Mission time
+
+A prediction is always made **over an explicit mission time or exposure
+interval** — an implementation MUST NOT assume a time horizon that was not
+explicitly supplied. A mission time carries a numeric value and a unit; this
+supplement, consistent with Section 10's treatment of `TimeBasis`, does not
+define a checked unit-conversion system (core Section 5.1.7 notes `std.units`
+is not yet part of ETDL Core) — matching a rate's declared unit to a mission
+time's declared unit is the caller's responsibility, stated explicitly rather
+than silently assumed compatible.
+
+### 32.3 Time-to-failure models
+
+This version of the supplement defines two model families:
+
+**Constant-hazard (exponential) model** — one parameter, `lambda` (the
+constant failure rate):
+
+```
+S(t) = exp(-lambda * t)
+h(t) = lambda                    (constant for all t)
+H(t) = lambda * t
+```
+
+**Weibull model** — two parameters, shape `k` and scale `lambda`:
+
+```
+S(t) = exp(-(t/lambda)^k)
+h(t) = (k/lambda) * (t/lambda)^(k-1)
+H(t) = (t/lambda)^k
+mean  = lambda * Gamma(1 + 1/k)
+```
+
+The Weibull model's shape parameter `k` determines the hazard's direction
+over time: `k < 1` is decreasing hazard (infant mortality/burn-in), `k = 1`
+is constant hazard (mathematically equivalent to the exponential model with
+the same `lambda`), `k > 1` is increasing hazard (wear-out/aging). An
+implementation MUST NOT force a system exhibiting aging behavior into the
+constant-hazard model on the theory that it is a simpler default — the two
+models make different, non-interchangeable claims.
+
+A model descriptor accompanying a prediction MUST identify: the model family,
+its parameters, and its assumptions stated explicitly (for example,
+"constant hazard," "non-repairable"). This supplement does not require any
+particular set of model families beyond these two; a future version, or a
+non-core supplement, MAY define additional families without requiring a
+change to Sections 32.1–32.2's quantity/mission-time model.
+
+### 32.4 Extrapolation
+
+A model MAY declare the time range it is asserted valid over. A prediction
+MUST record whether the requested mission time falls outside that declared
+range (`extrapolated: true`); when no range was declared, an implementation
+MUST NOT report `extrapolated: true` on the theory that an undeclared range
+implies invalidity — the absence of a declared range is not itself evidence
+either way, and an implementation MUST NOT invent one.
+
+### 32.5 Provenance and the calibration boundary
+
+A prediction's parameters typically originate from a `ProbabilityEstimate`
+(Section 9) inside a Reliability Artifact (Section 13). Constructing a
+prediction from an artifact is a **read-only** operation: it MUST NOT modify
+the source artifact, MUST NOT invoke or duplicate the calibration process of
+Section 33, and MUST record, as part of the prediction's provenance, which
+artifact and which estimate within it the model's parameters were read from.
+A prediction whose parameters were supplied directly (not read from an
+artifact) carries no artificial artifact provenance — Section 12's provenance
+requirement is "SHOULD," not fabricated where genuinely absent.
+
+### 32.6 Determinism
+
+Every quantity in Section 32.1, for the model families of Section 32.3, is
+computed by a closed-form, deterministic formula. This supplement defines no
+sampling, simulation, or randomized method for computing a predictive
+quantity; Monte Carlo or Bayesian posterior-predictive simulation, if ever
+introduced, is out of scope for this version and MUST be introduced, if at
+all, as an explicitly labeled, opt-in alternative — never as a silent
+replacement for the closed-form calculation.
+
+### 32.7 Numerical stability
+
+An implementation MUST return `S(0) = 1`, `H(0) = 0`, `F(0) = 0` exactly, by
+direct evaluation of the boundary case rather than by evaluating the general
+formula at a point where floating-point rounding could produce a value other
+than the exact boundary. An implementation SHOULD compute `H(t)` from a
+model's own closed form (Section 32.3) rather than as `-ln(S(t))`, since the
+latter loses precision as `S(t)` approaches zero. `S(t)` MUST remain finite,
+non-negative, and never `NaN` for any finite, non-negative `t`, including
+values of `t` for which `S(t)` is smaller than the floating-point
+representation can distinguish from zero.
+
+---
+
+## 33. Runtime Feedback and Calibration
+
+This section makes Section 17's lifecycle diagram normative for
+**calibration**: the specific act of comparing a `ProbabilityEstimate`'s
+predicted value against accumulated `ReliabilityObservation`s (Section 16)
+and reporting whether they are statistically consistent.
+
+### 33.1 The discipline
+
+```
+observe  ->  analyze (calibrate)  ->  engineering review  ->  publish a NEW artifact  ->  rebuild
+```
+
+An implementation performing calibration MUST NOT, as a consequence of that
+calibration, modify the `ProbabilityEstimate`, the Reliability Artifact
+containing it, or any prior `ReliabilityObservation`, in place. A calibration
+result that indicates the predicted and observed values have diverged MUST
+be surfaced as a **report for engineering review** — never as an automatic
+rewrite of the estimate. If a human reviewer decides the estimate should
+change, that decision is realized by publishing a **new** Reliability
+Artifact (a new `version`, Section 25's versioning discipline), never by
+editing the artifact the calibration was run against. This is a `MUST`-level
+requirement, not a recommendation: an implementation that silently updates a
+probability in response to observed data, without this human-in-the-loop
+publish step, does not conform to this supplement regardless of how
+statistically sound its update rule is.
+
+### 33.2 Calibration result
+
+A calibration comparison MUST report, at minimum:
+
+| Field | Meaning |
+|---|---|
+| the predicted value | Snapshotted from the artifact at comparison time — not a live reference that could change if the artifact is later edited (which, per Section 33.1, it MUST NOT be for this event/conditions combination without becoming a new artifact version). |
+| the observed value | The aggregated observation's proportion (failures / exposure) under the same conditions. |
+| the statistical method used | Stated explicitly, by name and version, so an engineer reviewing the result can judge whether it applies — an implementation MUST NOT present a bare p-value or status with no stated method. |
+| a status | At minimum distinguishing: consistent with prediction; a potential deviation; a significant deviation ("drift"); insufficient data to judge; or the comparison is unsupported (for example, because the predicted and observed values describe different metrics, conditions, or time bases and comparing them would attribute a difference to the model that may only reflect a difference in circumstances). |
+
+A comparison MUST be refused (reported as unsupported, not silently
+performed anyway) when the predicted estimate's metric, declared conditions,
+or time basis does not match the observation's — Section 10's metric
+distinctions (probability vs. rate vs. frequency) are not interchangeable
+inputs to a single statistical test.
+
+### 33.3 Statistical method
+
+This supplement does not mandate one statistical test; an implementation
+MUST state which one it used (Section 33.2). Where the predicted quantity is
+a probability (Section 9's `state`-bearing estimate, not a rate), an exact
+binomial test comparing observed failures against exposure at the predicted
+rate is an accepted method; a normal approximation MUST NOT be silently
+substituted for an exact test without disclosure, since the approximation's
+error is largest exactly in the low-failure-count regime reliability
+engineering most often operates in.
+
+### 33.4 Insufficient data
+
+A comparison based on an exposure below a stated minimum MUST be reported as
+insufficient data, not silently treated as a confident result merely because
+a p-value happened to compute. The minimum exposure threshold is an
+implementation configuration detail this supplement does not fix a value
+for, but its presence and its value MUST be disclosed alongside any
+comparison result it gated.
+
+### 33.5 Relationship to Predictive Reliability
+
+Section 32's predictions and this section's calibration compose without
+either depending on the other's internal mechanism: a calibration result
+(Section 33.2) MAY itself become the trigger for a human review that
+publishes a new artifact (Section 33.1), whose revised estimate a Section
+32 prediction MAY then be constructed from (Section 32.5) — but Section 32's
+model construction is read-only with respect to any artifact, and this
+section's calibration does not construct or consume a Section 32 prediction
+directly. Each remains independently meaningful: a document may use Section
+32's predictive quantities with no calibration ever having run, and
+calibration (this section) is meaningful for any predicted probability
+regardless of whether it is ever used to construct a Section 32 model.

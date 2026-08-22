@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/usamassem/etdl-specification/blob/main/supplements/diagnostics/ETDL-Diagnostics-Schema.json",
+  "title": "ETDL Diagnostics Supplement 1.0 - x-diagnostics extension field",
+  "description": "JSON Schema for the x-diagnostics extension field object (ETDL-Diagnostics-Supplement.md Section 4). Reference resolution (causeRef/monitors) and the E-15x/W-412 cross-object rules are enforced by a Conforming Parser/Compiler per Section 5, not by this schema alone.",
+  "type": "object",
+  "properties": {
+    "correlations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/correlation" }
+    },
+    "anomalyRules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/anomalyRule" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "correlation": {
+      "type": "object",
+      "required": ["id", "spanAttribute", "spanValue", "causeRef"],
+      "properties": {
+        "id": { "type": "string" },
+        "spanAttribute": { "type": "string" },
+        "spanValue": { "type": "string" },
+        "causeRef": {
+          "type": "string",
+          "pattern": "^#/faultTrees/[^/]+/(gates|basicEvents)/[^/]+$"
+        },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "anomalyRule": {
+      "type": "object",
+      "required": ["id", "monitors"],
+      "properties": {
+        "id": { "type": "string" },
+        "monitors": {
+          "type": "string",
+          "pattern": "^#/eventTrees/[^/]+/nodes/[^/]+$"
+        },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -46,13 +46,22 @@ Everywhere this document uses **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**
    - 5.1.3 Supplement versioning
    - 5.1.4 Supplement dependencies
    - 5.1.5 Extension boundaries
+   - 5.1.6 Libraries Object
+   - 5.1.7 Library identity and the `std.*` namespace
+   - 5.1.8 Library resolution
+   - 5.1.9 Library versioning and dependencies
    - 5.2 Info Object
 6. [The ETDL Condition Expression Language (ECEL)](#6-the-etdl-condition-expression-language-ecel)
 7. [Semantic Validation Rules](#7-semantic-validation-rules)
 8. [Compiler and Code Generation Semantics](#8-compiler-and-code-generation-semantics)
 9. [Runtime Library Contract (etdl_core)](#9-runtime-library-contract-etdl_core)
 10. [Versioning and Compatibility](#10-versioning-and-compatibility)
-11. [Extensibility](#11-extensibility)
+11. [Extensibility and Supplement Development](#11-extensibility-and-supplement-development)
+   - 11.1 Specification Extensions (`x-` fields)
+   - 11.2 The Canonical Document as Sole Semantic Authority
+   - 11.3 Supplement Processing Model
+   - 11.4 Core and Non-Core Supplements
+   - 11.5 Defining a New Supplement
 12. [Security Considerations](#12-security-considerations)
 13. [Full Worked Example](#13-full-worked-example)
 - [Appendix A — Consolidated Grammar Reference](#appendix-a--consolidated-grammar-reference)
@@ -175,6 +184,9 @@ A single package MAY implement more than one target; the Rust and TypeScript ref
 | **node** | ETDL | Any entry in an Event Tree Object's `nodes` map: a Barrier, Operation, or Consequence. |
 | **domain** | ETDL | The bounded context a `.etdl` document belongs to, declared in the Info Object. |
 | **supplement / extension** | ETDL | A formally identified, versioned domain extension to ETDL Core (Section 5.1.1). Supplements add domain-specific semantics and metadata; they do not alter core ETDL semantics. |
+| **library** | ETDL | A reusable catalog of named Basic Event/Gate definitions, authored in ordinary ETDL source and imported by qualified reference (Section 5.1.6). Adds content, not semantics — distinguished from a supplement, which adds semantics the compiler must understand. |
+| **qualified id** | ETDL | A reference of the form `<library-name>.<component-name>` (Section 5.1.6) resolving into an imported library's contents, used anywhere an ordinary Basic Event or Gate id is used. |
+| **ETDL Standard Library** | ETDL | The set of libraries under the reserved `std.*` namespace (Section 5.1.7) this specification itself defines and every Conforming Compiler distributes built in. |
 | **ETDL Core** | ETDL | The domain-neutral language defined by Sections 4–13 of this specification, independent of any supplement. |
 | **import alias** | ETDL | A short name bound to an external AsyncAPI document in `asyncapi_imports`, used as the prefix of an external reference. |
 | **external reference** | ETDL | A string of the form `<import-alias>#<json-pointer>` resolving into an imported AsyncAPI document (Section 5.3). |
@@ -198,7 +210,11 @@ A `.etdl` document **MUST** be valid YAML 1.2, which includes any document that 
 
 ### 4.2 File Extension and Media Type
 
-Files **SHOULD** use the extension `.etdl`. When a media type is needed (for example, in an HTTP `Content-Type` header when serving a document from a schema registry), implementations **SHOULD** use `application/vnd.etdl+yaml`, or `application/vnd.etdl+json` when the document is serialized as JSON.
+The file extension is a naming convention, not a syntactic requirement: conformance (Section 2.3) is a property of a document's *content* (Section 4.1), never of its filename or extension. A file's extension does not change how it is parsed — a `.json`-named file containing an ETDL document in its JSON-subset form (Section 4.1) and a `.yaml`/`.yml`-named file containing the same document in YAML form are both Conforming Documents if their content is, and a Conforming Parser MUST NOT reject either on the basis of the filename.
+
+Files **SHOULD** use the extension `.etdl` regardless of which serialization (YAML or JSON) they use. This is a practical convention, not a normative constraint: `.etdl` lets tooling (editors, file-type associations, static analysis, this specification's own reference implementations) recognize a document as ETDL without inspecting its content, which a generic `.json` or `.yaml`/`.yml` extension cannot do. An implementation MAY additionally accept `.json`, `.yaml`, or `.yml` for a document that is otherwise a Conforming Document; it MUST NOT require `.etdl` as a precondition for conformance.
+
+When a media type is needed (for example, in an HTTP `Content-Type` header when serving a document from a schema registry), implementations **SHOULD** use `application/vnd.etdl+yaml`, or `application/vnd.etdl+json` when the document is serialized as JSON.
 
 ### 4.3 Character Encoding
 
@@ -217,15 +233,16 @@ This section defines every object type a `.etdl` document is built from. Section
 |---|---|---|---|
 | `etdl` | string | REQUIRED | Version of the ETDL specification this document conforms to, e.g. `"1.0.0"`. |
 | `info` | Info Object | REQUIRED | Document metadata (Section 5.2). |
-| `asyncapi_imports` | Map[string, string] | REQUIRED | Import aliases bound to AsyncAPI document locations (Section 5.3). |
+| `asyncapi_imports` | Map[string, string] | OPTIONAL, default `{}` | Import aliases bound to AsyncAPI document locations (Section 5.3.1). Only needed when at least one Message Reference in the document is an External Reference (Section 5.3.4) — a document whose every Message Reference is instead an inline `components.messages` definition (Section 5.4) needs no import at all. |
 | `supplements` | Array[Supplement Object] | OPTIONAL | Declared supplements/extensions (Section 5.1.1). |
+| `libraries` | Array[Library Reference Object] | OPTIONAL | Imported reusable-component libraries (Section 5.1.6). |
 | `components` | Components Object | OPTIONAL | Reusable Barrier/Operation/Gate/Basic Event templates (Section 5.4). |
 | `eventTrees` | Map[string, Event Tree Object] | REQUIRED* | Named event trees (Section 5.5). |
 | `eventTree` | Event Tree Object | DEPRECATED | Legacy singular form from 1.0.0-Standardized (Section 10.2). |
 | `faultTrees` | Map[string, Fault Tree Object] | OPTIONAL | Named fault trees (Section 5.11), whose computed probabilities MAY be linked into `eventTrees` (Section 5.15). |
 | `x-*` | any | OPTIONAL | Specification extensions (Section 11). |
 
-\* Exactly one of `eventTrees` or the deprecated `eventTree` MUST be present, **unless** the document declares a supplement that defines data-only semantics (Section 5.1.1). A supplement MAY define documents that carry no Event Trees or Fault Trees — for example, the ETDL Reliability Supplement 1.0 defines standalone reliability-data documents whose content lives entirely in `x-` extension fields (Section 5.1.5). Such a document MUST declare that supplement and MUST NOT carry `eventTrees`/`eventTree`/`faultTrees`. A data-only document is also exempt from the `asyncapi_imports` requirement (Section 5.3), since it references no messages or channels.
+\* Exactly one of `eventTrees` or the deprecated `eventTree` MUST be present, **unless** the document declares a supplement that defines data-only semantics (Section 5.1.1). A supplement MAY define documents that carry no Event Trees or Fault Trees — for example, the ETDL Reliability Supplement 1.0 defines standalone reliability-data documents whose content lives entirely in `x-` extension fields (Section 5.1.5). Such a document MUST declare that supplement and MUST NOT carry `eventTrees`/`eventTree`/`faultTrees`. A data-only document naturally has no need for `asyncapi_imports` (Section 5.3.1) or inline `components.messages` (Section 5.4) either, since it references no messages or channels.
 
 #### 5.1.1 Supplements Object
 
@@ -282,15 +299,17 @@ supplement-id = "etdl" "." 1*(ALPHA / DIGIT / "-")
 
 Reserved identifiers in this specification:
 
-| id | Supplement |
-|---|---|
-| `etdl.reliability` | ETDL Reliability Supplement 1.0 |
-| `etdl.safety` | (reserved for a future supplement) |
-| `etdl.security` | (reserved for a future supplement) |
-| `etdl.diagnostics` | (reserved for a future supplement) |
-| `etdl.performance` | (reserved for a future supplement) |
+| id | Supplement | Category (Section 11.4) |
+|---|---|---|
+| `etdl.reliability` | ETDL Reliability Supplement 1.0 | Core |
+| `etdl.tree-event` | ETDL Tree Event Supplement 1.0 | Core |
+| `etdl.safety` | ETDL Safety Supplement 1.0 | Core |
+| `etdl.security` | ETDL Security Supplement 1.0 (depends on `etdl.tree-event`, Section 5.1.4) | Core |
+| `etdl.diagnostics` | ETDL Diagnostics Supplement 1.0 | Core |
+| `etdl.performance` | ETDL Performance Supplement 1.0 | Core |
+| `etdl.chain` | ETDL Blockchain, Attestation and Provenance Supplement (defined in an independent companion specification, Section 11.5) | Non-core |
 
-An identifier not beginning with `etdl.` is not a valid supplement id.
+An identifier not beginning with `etdl.` is not a valid supplement id. Reserving an identifier here (to prevent a future collision, Section 11.5) does not by itself make a supplement core — the Category column reflects who maintains that supplement's normative specification, per Section 11.4, and does not change any Conforming Parser/Compiler's obligations (Section 2.3).
 
 #### 5.1.3 Supplement versioning
 
@@ -347,6 +366,83 @@ A supplement MUST NOT silently:
 A supplement that requires fundamentally different tree semantics MUST define a
 new supplement/version rather than overriding the core.
 
+#### 5.1.6 Libraries Object
+
+A **library** is a reusable catalog of named ETDL components — Basic Events and Gates today (Section 5.1.9 notes the boundary) — authored in ordinary ETDL source and imported by qualified reference, rather than a compiled-in extension of the compiler. Where a supplement (Section 5.1.1) adds new *semantics* the parser and compiler must understand, a library adds no new semantics at all: it supplies *content* — reusable definitions — that a document references exactly as it would reference a definition of its own. A library file carries no Event Trees or Fault Trees of its own; it is not itself a Conforming Document.
+
+**Declaration.** `libraries` is an array of Library Reference Objects at the document root:
+
+```yaml
+libraries:
+  - name: std.events
+    version: "1.0"
+    # required: true   # default; false = a warning, not an error, if unresolved
+```
+
+| Field | Type | Requirement | Description |
+|---|---|---|---|
+| `name` | string | REQUIRED | Library identifier (Section 5.1.7). |
+| `version` | string (SemVer) | REQUIRED | Requested library version (Section 5.1.9). |
+| `required` | boolean | OPTIONAL, default `true` | When `true`, the document's semantics cannot be fully applied without this library. Note the default polarity is the opposite of a Supplement Object's `required` (Section 5.1.1): a declared library is assumed necessary unless stated otherwise, since a document typically references specific definitions from it. |
+
+**Qualified reference.** A library's contents are referenced by a **qualified id** of the form `<library-name>.<component-name>` (e.g. `std.events.NetworkTimeout`), used anywhere an ordinary Basic Event or Gate id is used — currently, a Fault Tree Gate's `inputs` (Section 5.13) or a Fault Tree's `rootCause` (Section 5.12). A document MAY override a library-provided definition by declaring the same qualified id itself under its own `basicEvents`/`gates` (Section 5.11); the document's own declaration takes precedence.
+
+**Libraries are orthogonal to supplements.** A document MAY declare `libraries`, `supplements`, both, or neither, independently. Importing a library does not implicitly declare any supplement, and declaring a supplement does not implicitly import any library. The two mechanisms exist for structurally different purposes (Section 5.1.1 adds compiler-understood semantics; this section adds reusable declarative content) and MUST NOT be conflated by an implementation.
+
+#### 5.1.7 Library identity and the `std.*` namespace
+
+A library identifier is a dot-separated sequence of lowercase ASCII segments:
+
+```
+library-name = 1*(ALPHA-LOWER / DIGIT / "-") *("." 1*(ALPHA-LOWER / DIGIT / "-"))
+```
+
+The namespace `std.*` is reserved for the **ETDL Standard Library** — the set of libraries this specification itself defines, distributed with every Conforming Compiler (Section 5.1.8) rather than resolved from a search path. `std.*` reservation is a **hard partition**, not a search-order precedence rule: a Conforming Compiler MUST resolve any `std.*` name exclusively from its embedded built-in registry and MUST NOT permit a same-named directory on an optional-library search path or in a project-local library directory (Section 5.1.8) to shadow it, even inadvertently. A document referencing an unresolvable `std.*` name (because the implementation's built-in registry does not define it) MUST report E-116 (Appendix B); this is a normal, expected outcome for a `std.*` name this specification has not yet defined, not an implementation defect.
+
+This specification defines the following `std.*` libraries as of this version:
+
+| Library | Purpose | Stability |
+|---|---|---|
+| `std.events` | Reusable, domain-neutral named occurrences (e.g. generic `Occurred`/`StateChanged`/`ConditionMet`/`SignalReceived` identities, and a small set of illustrative failure-mechanism Basic Events) | 1.0 |
+| `std.logic` | Named boolean composition patterns (`AnyOf`, `AllOf`, `MajorityOf`, `ExactlyOneOf`) built from Section 5.13's native gate types, not a reimplementation of them | 1.0 |
+| `std.probability` | Domain-neutral probability foundation: three named probability constants (`Certain`, `Impossible`, `EvenOdds`) as the ETDL-source-expressible subset; the composition operations and distributions this library specifies are a computational API a Conforming Compiler MUST provide to any supplement or generator that needs them, not expressible in ETDL source itself (Section 6.8 — ECEL has no general expression syntax to invoke them) | 1.0 |
+
+`std.events` and `std.logic` MUST NOT define, reference, or require any reliability-, safety-, or security-specific concept (failure probability as a first-class field, MTBF, hazard rate, failure mode, or reliability block) — they are domain-neutral content usable by any future domain, including but not limited to reliability. `std.collections` and `std.units` are explicitly NOT part of this version: ETDL's Section 5 object model has no generic/user-definable structural type and no unit-of-measure primitive to build them from; a future version of this specification MAY introduce the core primitives such libraries would require, but this version does not.
+
+A library identifier not in the `std.*` namespace is an **optional library** (published independently, resolved from a configured search path) or a **user library** (project-local); Section 5.1.8 defines their resolution.
+
+#### 5.1.8 Library resolution
+
+Resolution is a **source-expansion** step, not a semantic one: it happens once, before Section 7's structural and semantic validation, and produces an expanded document in which every qualified id a Gate or Fault Tree references has been spliced in as an ordinary Basic Event or Gate definition. Section 7's validation rules, Section 8's compilation, and any declared supplement's processing (Section 11.3) operate on the expanded document and have no knowledge that library resolution occurred — a qualified id is, to every later stage, indistinguishable from a Basic Event or Gate the document declared directly. The original, unexpanded document MUST NOT be mutated; resolution produces a new document.
+
+**Search order.** For a name in the `std.*` namespace, resolution consults only the embedded built-in registry (Section 5.1.7); no other location is consulted. For any other name, a Conforming Compiler:
+
+1. Consults each configured optional-library search path, in the order configured, for `<path>/<name>/lib.etdl`.
+2. If unresolved, consults `<document-directory>/lib/<name>/lib.etdl` (a user library, resolved relative to the importing document).
+
+An implementation MAY offer no optional-library search paths (Section 5.1.9 notes the resulting behavior is unaffected for `required: false` libraries and diagnosed for `required: true` ones); this specification does not mandate that every Conforming Compiler support optional or user libraries, only that it support `std.*` (Section 5.1.7) and apply this search order when it does.
+
+**Transitivity and cycles.** A library MAY declare its own dependencies on other libraries (Section 5.1.9). Resolution MUST walk this dependency graph and splice every transitively referenced qualified id the importing document actually uses. A library name that reappears while it is already being resolved (a cyclic dependency) MUST be reported as E-117 (Appendix B), not silently ignored, infinitely recursed, or allowed to exhaust the implementation's call stack.
+
+#### 5.1.9 Library versioning and dependencies
+
+A library's own `version` field (in its `lib.etdl` manifest) and an importing document's `libraries[].version` (Section 5.1.6) both follow Semantic Versioning, independently of the `etdl` document-version field (Section 10.1) and of any Supplement Object's `version` (Section 5.1.3) — a document MAY combine any compatible core version, supplement versions, and library versions. An implementation resolving library `L` at document-requested MAJOR version `N` MUST accept an installed `L` whose MAJOR is `N` (any MINOR/PATCH) and MUST reject a MAJOR mismatch as E-114 (Appendix B), mirroring exactly how document-version (Section 10.1) and supplement-version (Section 5.1.3) compatibility already work — this specification intentionally uses one compatibility rule, not three different ones, for its three independent version axes.
+
+A library MAY declare dependencies on other libraries in its own manifest:
+
+```yaml
+library:
+  name: some.library
+  version: "1.0"
+  dependsOn:
+    - name: std.events
+      version: "1.0"
+```
+
+This specification does not require dependency-version solving beyond the MAJOR-compatibility rule above (no diamond-dependency merge resolution). An implementation encountering an unsatisfiable combination of requested library versions MAY report it as an ordinary E-114 at the document declaration that introduced the conflict.
+
+**Boundary of this version.** A library's `components:` MAY define Basic Events and Gates (Section 5.11, 5.13); Barrier and Operation definitions use the same underlying object model and MAY be present in a library file, but a Conforming Compiler is not required to splice qualified references to them in this version — no `std.*` library this specification defines requires it. A future version MAY extend qualified-reference resolution to Barriers and Operations without requiring a change to this section's resolution model.
+
 ### 5.2 Info Object
 
 | Field | Type | Requirement | Description |
@@ -388,7 +484,7 @@ ETDL 1.0.0 defines a resolved meaning for the following Internal Reference shape
 | `#/faultTrees/<id>/topEvent` | the Top Event Object of the named Fault Tree | `probabilitySource`, `onFailureProbabilitySource` (Section 5.15) |
 | `#/faultTrees/<id>/gates/<gate-id>` | the named Gate in the Fault Tree | Transfer `target` (Section 5.11.1), component `$ref` (Section 5.4) |
 | `#/faultTrees/<id>/basicEvents/<event-id>` | the named Basic Event in the Fault Tree | Transfer `target` (Section 5.11.1), component `$ref` (Section 5.4) |
-| `#/components/<kind>/<id>` | the named Component template | component `$ref` (Section 5.4) |
+| `#/components/<kind>/<id>` | the named Component template | component `$ref` (Section 5.4); when `<kind>` is `messages`, also a Message Reference (Section 5.3.4) |
 
 A shape is only meaningful where the carrying field explicitly expects an Internal Reference; a Transfer `target` that resolves to a gate or basic event within a Fault Tree is valid (Section 5.11.1). Any other syntactically valid Internal Reference has no defined meaning in this version of the specification, reserved for future extension. An Internal Reference that does not match one of the shapes above in a field that expects one is a validation error (Section 7, E-105).
 
@@ -400,6 +496,26 @@ A conforming parser resolves a reference string as follows:
 2. Otherwise, if the string matches `<alias>#/<pointer>` where `<alias>` is a key declared in `asyncapi_imports`, it is an External Reference (5.3.1). Resolve `<pointer>` against the AsyncAPI document at `asyncapi_imports[<alias>]`.
 3. A string matching neither form, or an External Reference whose `<pointer>` does not resolve within the target document, is a resolution error (Section 7).
 
+#### 5.3.4 Message References
+
+A **Message Reference** — the type of `initiatingEvent.message` (5.6), `Operation.emits` (5.9), `Consequence.message` (5.10), `Top Event.message` (5.12), and `Basic Event.message` (5.14) — is **either**:
+
+- an External Reference (5.3.1) into an `asyncapi_imports`-declared AsyncAPI document, resolving to an AsyncAPI Message Object; **or**
+- an Internal Reference (5.3.2) of the form `#/components/messages/<id>`, resolving to a Message Schema Object declared inline in the document's own `components.messages` (5.4).
+
+Both forms resolve to the same shape (a name, a `payload` schema, and an optional `headers` schema — 5.4's Message Schema Object is defined as exactly the fields of an AsyncAPI 3.0 Message Object this specification uses), so every rule that depends on a message's resolved schema — ECEL path resolution against `message.payload`/`message.headers` (Section 6.3), type checking (Section 6.7) — applies identically regardless of which form produced it. A document is free to use External References for some Message References and inline `components.messages` for others; the two forms are not mutually exclusive within one document, and neither is required merely because the other is present.
+
+A document with no AsyncAPI document available at all — for example, a small or standalone model with no separately-maintained AsyncAPI source — MAY define every message it needs inline and omit `asyncapi_imports` (5.1) entirely.
+
+#### 5.3.5 Channel References
+
+`Consequence.channel` (5.10) is a **Channel Reference**, distinct from a Message Reference: this specification's channel addressing and transport binding remain entirely delegated to AsyncAPI 3.0 (Section 1) — this version introduces no inline channel-schema object comparable to 5.4.1's Message Schema Object, and does not reverse that delegation. A Channel Reference is:
+
+- an External Reference (5.3.1) into an `asyncapi_imports`-declared AsyncAPI document's `channels` map; **or**
+- when the document declares no `asyncapi_imports` (5.1) at all, a **bare channel-name string** — an identifier with no `#` and no import-alias prefix, used directly, as-is, as the channel's identifier for code generation (Section 8). This is the minimum necessary to let a document with only inline `components.messages` (5.4) and no AsyncAPI document at all still express `operation: send` at all; it is not a channel schema, carries no address/transport-binding information beyond the bare name, and MUST NOT be interpreted as one.
+
+A document that declares `asyncapi_imports` MUST use the External Reference form for every `channel` field; the bare-string form is available only in its absence, so a document is never left with an ambiguous choice between the two for the same field.
+
 ### 5.4 Components Object
 
 Reusable definitions, referenced from elsewhere in the document via `$ref: "#/components/<kind>/<id>"`:
@@ -410,8 +526,46 @@ Reusable definitions, referenced from elsewhere in the document via `$ref: "#/co
 | `operations` | Map[string, Operation Node Object] | OPTIONAL | Reusable operation templates. |
 | `gates` | Map[string, Gate Object] | OPTIONAL | Reusable gate templates — for example, a shared "regional power loss" sub-tree referenced from several Fault Trees. |
 | `basicEvents` | Map[string, Basic Event Object] | OPTIONAL | Reusable basic-event definitions, typically sourced from a component failure-rate database (OREDA- or NPRD-style) shared across many Fault Trees. |
+| `messages` | Map[string, Message Schema Object] | OPTIONAL | Inline message/channel schema definitions, resolved by a Message Reference (5.3.4) of the form `#/components/messages/<id>` — an alternative to an External Reference into a separately-maintained AsyncAPI document, for a document with no such document to import. |
 
 A component reference resolves like an Internal Reference (5.3.2) but is not restricted to the `topEvent` shape; it is substituted in place, as-is, wherever it is referenced.
+
+#### 5.4.1 Message Schema Object
+
+A Message Schema Object under `components.messages` is exactly an AsyncAPI 3.0 Message Object — this specification defines no second schema language for it, reusing the same profile dependency (AsyncAPI 3.0) External References already resolve into:
+
+| Field | Type | Requirement | Description |
+|---|---|---|---|
+| `name` | string | OPTIONAL | Human-readable message name. |
+| `payload` | JSON Schema | REQUIRED | The message body's schema, resolved by `message.payload.*` ECEL paths (Section 6.3) exactly as an imported AsyncAPI message's `payload` already is. |
+| `headers` | JSON Schema | OPTIONAL | The message headers' schema, resolved by `message.headers.*` ECEL paths the same way. |
+
+```yaml
+components:
+  messages:
+    OrderPlaced:
+      name: "OrderPlaced"
+      payload:
+        type: object
+        properties:
+          orderId: { type: string }
+          items:
+            type: array
+            items:
+              type: object
+              properties:
+                sku: { type: string }
+                qty: { type: integer }
+
+eventTrees:
+  OrderFulfillment:
+    initiatingEvent:
+      id: OrderPlacedTrigger
+      message: "#/components/messages/OrderPlaced"
+      next: InventoryCheckBarrier
+```
+
+This document declares no `asyncapi_imports` at all — every Message Reference it makes resolves inline.
 
 ### 5.5 Event Tree Object
 
@@ -426,7 +580,7 @@ A component reference resolves like an Internal Reference (5.3.2) but is not res
 | Field | Type | Requirement | Description |
 |---|---|---|---|
 | `id` | string | REQUIRED | Naming label; also the source for generated entry-point identifiers (Section 8.3). |
-| `message` | External Reference | REQUIRED | The AsyncAPI message that starts this tree. |
+| `message` | Message Reference | REQUIRED | The message that starts this tree (Section 5.3.4). |
 | `next` | Node ID Reference | REQUIRED | |
 
 ### 5.7 Node Object
@@ -464,7 +618,7 @@ Every entry in an Event Tree's `nodes` map is one of three concrete types, discr
 | `type` | const `"operation"` | REQUIRED | |
 | `action` | enum: `execute` | REQUIRED | Reserved for future non-`execute` action kinds; ETDL 1.0.0 defines only `execute`. |
 | `handler` | string | REQUIRED | Identifier resolved by the target-language runtime to a callable (Section 8.2). |
-| `emits` | External Reference | OPTIONAL | The AsyncAPI message this operation produces on success, if any. |
+| `emits` | Message Reference | OPTIONAL | The message this operation produces on success, if any (Section 5.3.4). |
 | `next` | Node ID Reference | REQUIRED | Successor node on success. |
 | `onFailure` | Node ID Reference | OPTIONAL | Successor node if `handler` fails. See the default propagation rule below if omitted. |
 | `onFailureProbabilitySource` | Internal Reference | OPTIONAL | A `#/faultTrees/<id>/topEvent` reference (Section 5.15) supplying this operation's baseline failure probability for SLA tracking (Section 9.3), independently of whether `onFailure` is set. |
@@ -488,8 +642,8 @@ Every entry in an Event Tree's `nodes` map is one of three concrete types, discr
 |---|---|---|---|
 | `type` | const `"consequence"` | REQUIRED | |
 | `operation` | enum: `send`, `terminate` | REQUIRED | `terminate` marks a silent terminal outcome with no message emission. |
-| `channel` | External Reference | REQUIRED if `operation` is `send` | |
-| `message` | External Reference | REQUIRED if `operation` is `send` | |
+| `channel` | Channel Reference | REQUIRED if `operation` is `send` | Section 5.3.5. |
+| `message` | Message Reference | REQUIRED if `operation` is `send` | Section 5.3.4. |
 | `description` | string | OPTIONAL | |
 
 ---
@@ -525,7 +679,7 @@ Both a Gate's `inputs` (5.13) and a Top Event's `rootCause` are **Fault Tree Nod
 |---|---|---|---|
 | `id` | string | REQUIRED | Naming label; used in generated documentation and identifiers (Section 8.3). |
 | `description` | string | REQUIRED | A clear statement of the undesired event, per IEC 61025 convention. Required — an undocumented top event defeats the purpose of the analysis. |
-| `message` | External Reference | OPTIONAL | The AsyncAPI message that observably corresponds to this undesired event, if any. |
+| `message` | Message Reference | OPTIONAL | The message that observably corresponds to this undesired event, if any (Section 5.3.4). |
 | `rootCause` | Fault Tree Node Reference | REQUIRED | The gate or basic event whose probability equals the Top Event's probability. |
 
 ### 5.13 Gate Object
@@ -557,7 +711,7 @@ Both a Gate's `inputs` (5.13) and a Top Event's `rootCause` are **Fault Tree Nod
 | `missionTime` | number, `> 0` | REQUIRED if `failureRate` is set | Exposure time `t` used with `failureRate`. Unit is implementation-defined but MUST be consistent with `failureRate`'s unit: within one document, all `failureRate`/`missionTime` pairs MUST use the same time unit (e.g. hours), so the conversion `P = 1 − e^(−λt)` is coherent. |
 | `undeveloped` | boolean | OPTIONAL, default `false` | Marks this Basic Event as not further analyzed, rather than as a claim of true atomicity. Equivalent to `eventType: "undeveloped"`. |
 | `eventType` | enum: `"basic"`, `"house"`, `"undeveloped"`, `"conditional"` | OPTIONAL, default `"basic"` | The fault-tree event symbol (IEC 61025). |
-| `message` | External Reference | OPTIONAL | The AsyncAPI message that observably corresponds to this basic event occurring, if any. |
+| `message` | Message Reference | OPTIONAL | The message that observably corresponds to this basic event occurring, if any (Section 5.3.4). |
 
 **Note:** a Basic Event MUST supply exactly one of `probability` or `failureRate` (with `missionTime`); supplying both, or neither, is a validation error (Section 7).
 
@@ -754,6 +908,11 @@ This section enumerates every rule a Conforming Parser (Section 2.3) MUST enforc
 | E-106 | A Supplement Object's `id` is not a valid supplement identifier (does not begin with `etdl.` or contains invalid characters) (Section 5.1.2). |
 | E-107 | A Supplement Object's `version` is not valid SemVer, or declares a future MAJOR version the implementation does not support (Section 5.1.3). |
 | E-108 | A declared supplement is `required: true` but is not implemented by this parser/compiler, and the configuration does not permit proceeding (Section 5.1.1). |
+| E-113 | A Library Reference Object's `name` is not a valid library identifier (Section 5.1.7). |
+| E-114 | A Library Reference Object's `version` is incompatible with the resolved library's own `version` (a MAJOR mismatch), or is not valid SemVer (Section 5.1.9). |
+| E-115 | A resolved library manifest is malformed, or its own declared `library.name` does not match the name it was resolved under (Section 5.1.8). |
+| E-116 | A `required: true` (default) library could not be resolved (Section 5.1.6), including a `std.*` name absent from the implementation's built-in registry (Section 5.1.7). |
+| E-117 | A cyclic dependency exists among library `dependsOn` declarations (Section 5.1.9). |
 
 ### 7.2 Structural Integrity — Event Trees (V-1xx)
 
@@ -804,6 +963,7 @@ These mirror 7.2's Event Tree rules in spirit, applied to a Fault Tree's `gates`
 | V-504 | A Basic Event's `failureRate` is set without a corresponding `missionTime`. |
 | V-505 | An `INHIBIT` gate omits the required `inhibitCondition` field. |
 | V-506 | A Transfer's `target` is not an Internal Reference of the form `#/faultTrees/<id>/...`, or references a Fault Tree absent from the document (Section 5.11.1). |
+| V-507 | A Basic Event's `probability`, `failureRate`, or `missionTime` is not finite (`NaN`/infinity), `failureRate`/`missionTime` is negative, or `probability` is outside `[0,1]` (Section 5.14). |
 
 ### 7.7 Advisory Diagnostics (W-4xx)
 
@@ -814,6 +974,7 @@ These mirror 7.2's Event Tree rules in spirit, applied to a Fault Tree's `gates`
 | W-405 | A Transfer has an empty `label`. |
 | W-406 | A Basic Event of type `"house"` omits a `probability`/`failureRate` — a house event is a boundary condition whose value is supplied, not derived (Section 5.14). |
 | W-407 | A declared supplement is not implemented by this parser/compiler and is not `required`; its semantics will not be applied (Section 5.1.1). |
+| W-409 | A `required: false` library could not be resolved; its definitions are simply unavailable, and any reference to a qualified id it would have supplied fails as an ordinary undefined-Basic-Event/Gate error (Section 5.1.6). |
 
 ---
 
@@ -824,7 +985,7 @@ These mirror 7.2's Event Tree rules in spirit, applied to a Fault Tree's `gates`
 A Conforming Compiler processes a `.etdl` document in the following order; each stage MUST complete without error before the next begins:
 
 1. **Parse.** Deserialize the document (Section 4.1) into an in-memory representation.
-2. **Resolve Imports.** Load and parse every document listed in `asyncapi_imports`.
+2. **Resolve Imports.** If `asyncapi_imports` is present and non-empty, load and parse every document it lists. A document with no `asyncapi_imports` (Section 5.1) relies entirely on inline `components.messages` (Section 5.4.1) for Message Reference resolution (Section 5.3.4), and this stage is a no-op.
 3. **Validate Structure.** Enforce the Section 7 rules that don't require cross-referencing computed probabilities.
 4. **Resolve Fault Trees.** For every Fault Tree Object, compute Basic Event probabilities, then Gate probabilities bottom-up, then the Top Event probability (Section 5.16) — entirely independent of any Event Tree (Section 5.15).
 5. **Resolve Probability Links.** Substitute every `probabilitySource` / `onFailureProbabilitySource` with the value computed in stage 4, then re-check rule V-203 (probability-sum) with the now-fully-resolved values.
@@ -1061,9 +1222,58 @@ A field marked DEPRECATED in this specification remains supported for at least o
 
 ---
 
-## 11. Extensibility
+## 11. Extensibility and Supplement Development
+
+Section 5.1 defines how a document **declares** a supplement. This section defines how a compiler **processes** one, and how a new supplement is defined without modifying ETDL Core.
+
+### 11.1 Specification Extensions (`x-` fields)
 
 Any object defined in Section 5 MAY carry additional fields whose names begin with `x-` (a **specification extension**). A Conforming Parser MUST preserve unrecognized `x-` fields through parsing, so downstream tooling can read them, and MUST NOT reject a document solely for containing one — the same convention used by OpenAPI, AsyncAPI, and CloudEvents. Fields not beginning with `x-` are reserved for future versions of this specification; a Conforming Parser MUST reject an unrecognized non-`x-` field (Appendix E).
+
+By convention, a supplement identified as `etdl.<domain>` (Section 5.1.2) stores its own data in a single extension field named `x-<domain>` at the root of the object it annotates (e.g. `x-reliability`, `x-tree-event`). This is a naming convention, not a structural requirement of Section 5.1 — a supplement's own specification is the normative source for exactly which `x-` field(s) it uses and their schema.
+
+**Parser ignorance is load-bearing.** The parser and Section 5's core object model have no knowledge of any supplement's semantics: they treat every `x-` field identically, as an opaque, preserved value. This is what makes Section 11.4's guarantee possible — a new supplement can be defined, including one this specification's authors never anticipated, without a coordinated change to the parser or to any other supplement.
+
+### 11.2 The Canonical Document as Sole Semantic Authority
+
+The parsed document (Section 5, as constrained by Section 7's `MUST`-level rules) is the **single semantic source of truth** for a Conforming Document's core meaning: its Event Trees, Fault Trees, Barriers, Operations, Gates, Basic Events, and the probabilities and control flow they define.
+
+A supplement:
+
+- MUST treat the document as read-only. Processing a supplement MUST NOT alter any core field's value, add or remove a node, change branch evaluation order, or otherwise change what a Conforming Parser/Compiler that does not implement the supplement would compute from the same document (Section 5.1.5 already states this for document semantics generally; this subsection makes explicit that it also binds a supplement's *processing*, not only its *declaration*).
+- MUST NOT become a second authority a downstream consumer needs to consult to determine core ETDL meaning. A supplement's output is always a **derived view** — additional information *about* the document — never a replacement for, or a competing definition of, the document's own semantics.
+- MUST NOT require another supplement's derived output as an input. Declaring several supplements on one document (Section 5.1.1) does not create an implicit processing order among their semantics; Section 5.1.4's dependency mechanism governs only whether a supplement's *own* declared prerequisites are satisfied, not data flow between supplements' outputs.
+
+This orthogonality requirement exists so that a party implementing a new supplement can reason about it in isolation against this specification and the target document alone, without auditing every other supplement that might also be declared.
+
+### 11.3 Supplement Processing Model
+
+A Conforming Parser/Compiler that implements a declared supplement (an **ETDL `<domain>` Supplement-Conformant** implementation, Section 2.3) applies that supplement's semantics in two ordered phases, both of which are read-only with respect to the document (Section 11.2):
+
+1. **Validation.** Runs after core semantic validation (Section 7) succeeds and after the compiler has confirmed the supplement's declaration is well-formed (E-106/E-107, Section 5.1.2–5.1.3). The supplement inspects the document — including its own `x-<domain>` fields — and MAY append diagnostics (Section 7's notation applies: `E-`/`V-`-prefixed diagnostics are errors that MUST block compilation; `W-`-prefixed diagnostics are advisories). A supplement's validation MUST NOT depend on the result of another supplement's validation.
+2. **Semantic processing.** Runs only if validation produced no blocking diagnostics. The supplement MAY derive additional data from the document — for example, resolving an externally supplied value (as the ETDL Reliability Supplement's `x-reliability.source` does) or producing an independent structural model (as the ETDL Tree Event Supplement's tree does). This derived data is the supplement's output; it is consumed by that supplement's own downstream tooling (analysis, artifact generation, code generation extensions it defines), never folded back into the canonical document.
+
+An implementation MAY expose these two phases through any internal interface it chooses; this specification does not mandate an implementation language or API shape. As an informative illustration (not itself normative): a compiler could expose a per-supplement handler keyed by the supplement's `id` (Section 5.1.2), registered before compilation begins, offering exactly two operations corresponding to the two phases above — one that inspects the document and returns diagnostics, and one that runs only once validation has passed and returns the supplement's derived data. A new supplement implementation for such a compiler needs to provide exactly that pair of operations to participate in the pipeline correctly; this specification does not require any particular implementation to structure its internals this way.
+
+**Unsupported supplements** continue to be governed entirely by Section 5.1.1's existing policy (W-407 for a non-required supplement the implementation does not recognize; E-108 for a `required: true` one) — Sections 11.2–11.3 change nothing about that policy; they specify what happens for supplements an implementation *does* implement.
+
+### 11.4 Core and Non-Core Supplements
+
+This specification distinguishes two categories of supplement, differing only in **who authors and maintains the supplement's normative specification** — the declaration mechanism (Section 5.1), processing model (Section 11.3), and non-mutation guarantees (Section 11.2) are identical for both, and neither category is a conformance target of its own beyond the existing **ETDL Supplement-Aware** / **ETDL `<domain>` Supplement-Conformant** levels (Section 2.3), which apply the same way to a core or a non-core supplement:
+
+- A **core supplement** is one whose normative specification this specification's own maintainers author and publish as a companion document (cross-referenced from Appendix E), under a reserved identifier in Section 5.1.2's table. As of this version, the core supplements are `etdl.reliability` (the ETDL Reliability Supplement), `etdl.tree-event` (the ETDL Tree Event Supplement), `etdl.safety` (the ETDL Safety Supplement), `etdl.security` (the ETDL Security Supplement), `etdl.diagnostics` (the ETDL Diagnostics Supplement), and `etdl.performance` (the ETDL Performance Supplement).
+- A **non-core supplement** is any supplement whose normative specification is authored and maintained independently of this document — by a third party, under its own `etdl.<domain>` identifier (Section 5.1.2) and its own version stream (Section 5.1.3), in its own companion specification. This specification does not define a non-core supplement's semantics and is not the authority to consult for them.
+
+Neither category changes a Conforming Parser/Compiler's obligations: no conformance target defined in Section 2.3 requires implementing *any* supplement, core or non-core, and Section 5.1.1's declaration-time policy (W-407 for an unrecognized, non-required supplement; E-108 for an unrecognized `required: true` one) applies identically to both. The distinction exists only so an implementer, or a document author choosing which supplement to declare, can tell from this specification alone whether a given `etdl.<domain>` identifier's semantics are defined here or elsewhere. Blockchain/attestation/provenance concerns are this specification's anticipated non-core case: Section 5.1.2 reserves `etdl.chain` for it, whose companion specification is maintained independently (Section 11.5).
+
+### 11.5 Defining a New Supplement
+
+A party defining a new supplement:
+
+1. Chooses an unclaimed identifier `etdl.<domain>` (Section 5.1.2) and requests its reservation in this specification's registry (to prevent a future collision), or, for a non-core supplement not seeking reservation here, documents the identifier it has chosen in its own specification.
+2. Publishes a normative specification for the supplement — independently of this document (a **companion specification**, analogous to how the ETDL Reliability Supplement and ETDL Tree Event Supplement are each their own document, cross-referenced from Appendix E, rather than inlined into this one). That specification is the sole normative authority for the supplement's `x-<domain>` schema, its validation rules and their diagnostic codes (which MUST use a code namespace that cannot collide with Appendix B's core registry or another supplement's — a supplement's own diagnostic codes are that supplement's own registry, not an extension of Appendix B), and its derived-output semantics.
+3. Designs that specification to satisfy Sections 11.2–11.3: read-only with respect to the document, no dependency on another supplement's output, and (per Section 5.1.5) no silent change to core ETDL semantics.
+4. States explicitly, in that companion specification, whether the supplement is intended to be a core supplement of some future version of this specification or is meant to remain non-core (Section 11.4) — this specification's own maintainers, not the supplement author unilaterally, decide whether a supplement is promoted to core.
 
 ---
 
@@ -1235,6 +1445,11 @@ stable within a MAJOR version; new codes are added, never reused.
 | E-106 | A Supplement Object's `id` is not a valid supplement identifier (Section 5.1.2). |
 | E-107 | A Supplement Object's `version` is not valid SemVer, or declares a future MAJOR the implementation does not support (Section 5.1.3). |
 | E-108 | A declared supplement is `required: true` but not implemented, and configuration does not permit proceeding (Section 5.1.1). |
+| E-113 | A Library Reference Object's `name` is not a valid library identifier (Section 5.1.7). |
+| E-114 | A Library Reference Object's `version` is incompatible with the resolved library's own `version` (MAJOR mismatch), or is not valid SemVer (Section 5.1.9). |
+| E-115 | A resolved library manifest is malformed, or its declared name does not match the name it was resolved under (Section 5.1.8). |
+| E-116 | A `required: true` library could not be resolved, including an undefined `std.*` name (Section 5.1.6–5.1.7). |
+| E-117 | A cyclic dependency among library `dependsOn` declarations (Section 5.1.9). |
 
 ### Event-Tree Structure (V-1xx)
 
@@ -1281,6 +1496,7 @@ stable within a MAJOR version; new codes are added, never reused.
 | V-504 | A Basic Event's `failureRate` is set without a corresponding `missionTime` (Section 5.14). |
 | V-505 | An `INHIBIT` gate omits the required `inhibitCondition` (Section 5.13). |
 | V-506 | A Transfer's `target` is not `#/faultTrees/<id>/...` or references a Fault Tree absent from the document (Section 5.11.1). |
+| V-507 | A Basic Event's `probability`, `failureRate`, or `missionTime` is not finite (`NaN`/infinity), `failureRate`/`missionTime` is negative, or `probability` is outside `[0,1]` (Section 5.14). |
 
 ### Advisory Diagnostics (W-4xx)
 
@@ -1291,6 +1507,7 @@ stable within a MAJOR version; new codes are added, never reused.
 | W-405 | A Transfer has an empty `label` (Section 5.11.1). |
 | W-406 | A Basic Event of type `"house"` omits a `probability`/`failureRate` — a house event is a boundary condition whose value is supplied, not derived (Section 5.14). |
 | W-407 | A declared, non-required supplement is not implemented; its semantics will not be applied (Section 5.1.1). |
+| W-409 | A `required: false` library could not be resolved; its qualified ids are simply unavailable (Section 5.1.6). |
 
 ---
 
@@ -1328,7 +1545,9 @@ Substantive changes from **1.0.0-Standardized** (Proof-of-Concept Draft) to
 
 ---
 
-## Appendix E — Companion Artifacts (JSON Schema)
+## Appendix E — Companion Artifacts
+
+### E.1 JSON Schema
 
 A machine-readable JSON Schema for a **Conforming Document** is maintained as a
 companion artifact in this repository (`schemas/etdl.schema.json`). The schema
@@ -1339,3 +1558,23 @@ that satisfies the Section 5 MUST-level rules and the Section 6.2 grammar.
 > values (probability sums, reference resolution, type checking) are enforced by
 > a Conforming Parser/Compiler, not by the schema alone. The schema is the
 > first-pass gate; Sections 7 and 8 remain normative for full conformance.
+
+### E.2 Companion Supplement Specifications
+
+The normative specification for each **core supplement** (Section 11.4) is
+maintained as an independent companion document, not inlined into this
+specification, per Section 11.5:
+
+| Supplement id | Companion specification | Location |
+|---|---|---|
+| `etdl.reliability` | ETDL Reliability Supplement 1.0 | `supplements/reliability/ETDL-Reliability-Supplement.md` |
+| `etdl.tree-event` | ETDL Tree Event Supplement 1.0 | `supplements/tree-event/ETDL-Tree-Event-Supplement.md` |
+| `etdl.safety` | ETDL Safety Supplement 1.0 | `supplements/safety/ETDL-Safety-Supplement.md` |
+| `etdl.security` | ETDL Security Supplement 1.0 | `supplements/security/ETDL-Security-Supplement.md` |
+| `etdl.diagnostics` | ETDL Diagnostics Supplement 1.0 | `supplements/diagnostics/ETDL-Diagnostics-Supplement.md` |
+| `etdl.performance` | ETDL Performance Supplement 1.0 | `supplements/performance/ETDL-Performance-Supplement.md` |
+
+A **non-core supplement**'s specification (Section 11.4) is maintained in its
+own, independently versioned repository and is not listed here; Section
+5.1.2's reserved-identifier table records only the identifier and category,
+not a location, for a non-core supplement.

@@ -40,7 +40,7 @@
     },
     "asyncapi_imports": {
       "type": "object",
-      "minProperties": 1,
+      "description": "OPTIONAL (Section 5.1); may be empty or omitted for a document whose every Message Reference (Section 5.3.4) is an inline components.messages definition.",
       "additionalProperties": {
         "type": "string"
       }
@@ -77,6 +77,13 @@
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/basicEvent"
+          }
+        },
+        "messages": {
+          "type": "object",
+          "description": "Inline Message Schema Objects (Section 5.4.1), resolved by a Message Reference of the form #/components/messages/<id> (Section 5.3.4).",
+          "additionalProperties": {
+            "$ref": "#/$defs/messageSchema"
           }
         }
       },
@@ -645,6 +652,27 @@
           }
         }
       ]
+    },
+    "messageSchema": {
+      "type": "object",
+      "description": "Message Schema Object (Section 5.4.1): an inline, AsyncAPI 3.0 Message Object-shaped definition resolved by a Message Reference of the form #/components/messages/<id>.",
+      "required": [
+        "payload"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "payload": {
+          "type": "object",
+          "description": "A JSON Schema describing the message payload."
+        },
+        "headers": {
+          "type": "object",
+          "description": "A JSON Schema describing the message headers."
+        }
+      },
+      "additionalProperties": false
     },
     "transfer": {
       "type": "object",

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/usamassem/etdl-specification/blob/main/supplements/safety/ETDL-Safety-Schema.json",
+  "title": "ETDL Safety Supplement 1.0 - x-safety extension field",
+  "description": "JSON Schema for the x-safety extension field object (ETDL-Safety-Supplement.md Section 4). Reference resolution (consequenceRef/nodeRef) and the E-13x/W-410 cross-object rules are enforced by a Conforming Parser/Compiler per Section 5, not by this schema alone.",
+  "type": "object",
+  "properties": {
+    "hazards": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hazard" }
+    },
+    "barriers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/safetyBarrier" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "hazard": {
+      "type": "object",
+      "required": ["id", "description", "severity", "likelihood", "riskIndex", "consequenceRef"],
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "severity": {
+          "enum": ["catastrophic", "critical", "marginal", "negligible"]
+        },
+        "likelihood": {
+          "enum": ["frequent", "probable", "occasional", "remote", "improbable"]
+        },
+        "riskIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "consequenceRef": {
+          "type": "string",
+          "pattern": "^#/eventTrees/[^/]+/nodes/[^/]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "safetyBarrier": {
+      "type": "object",
+      "required": ["id", "nodeRef", "sil"],
+      "properties": {
+        "id": { "type": "string" },
+        "nodeRef": {
+          "type": "string",
+          "pattern": "^#/eventTrees/[^/]+/nodes/[^/]+$"
+        },
+        "sil": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "independentOf": {
+          "type": "array",
+          "default": [],
+          "items": { "type": "string" }
+        },
+        "commonCauseGroup": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

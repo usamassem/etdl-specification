@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/usamassem/etdl-specification/blob/main/supplements/security/ETDL-Security-Schema.json",
+  "title": "ETDL Security Supplement 1.0 - x-security extension field",
+  "description": "JSON Schema for the x-security extension field object (ETDL-Security-Supplement.md Section 4). Cross-references into x-tree-event (treeRef/leafCategories keys) and eventTrees (nodeRef) and the E-14x/W-411 rules are enforced by a Conforming Parser/Compiler per Section 5, not by this schema alone.",
+  "type": "object",
+  "properties": {
+    "threatModels": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/threatModel" }
+    },
+    "controls": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/control" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "strideCategory": {
+      "enum": [
+        "spoofing",
+        "tampering",
+        "repudiation",
+        "information-disclosure",
+        "denial-of-service",
+        "elevation-of-privilege"
+      ]
+    },
+    "threatModel": {
+      "type": "object",
+      "required": ["id", "treeRef", "leafCategories"],
+      "properties": {
+        "id": { "type": "string" },
+        "treeRef": { "type": "string" },
+        "leafCategories": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/strideCategory" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "control": {
+      "type": "object",
+      "required": ["id", "nodeRef", "controlId", "mitigates"],
+      "properties": {
+        "id": { "type": "string" },
+        "nodeRef": {
+          "type": "string",
+          "pattern": "^#/eventTrees/[^/]+/nodes/[^/]+$"
+        },
+        "framework": { "type": "string" },
+        "controlId": { "type": "string" },
+        "mitigates": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

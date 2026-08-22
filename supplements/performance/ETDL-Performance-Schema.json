@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/usamassem/etdl-specification/blob/main/supplements/performance/ETDL-Performance-Schema.json",
+  "title": "ETDL Performance Supplement 1.0 - x-performance extension field",
+  "description": "JSON Schema for the x-performance extension field object (ETDL-Performance-Supplement.md Section 4). Reference resolution (nodeRef) and the E-16x/W-413 cross-object rules are enforced by a Conforming Parser/Compiler per Section 5, not by this schema alone.",
+  "type": "object",
+  "properties": {
+    "budgets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/budget" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "budget": {
+      "type": "object",
+      "required": ["id", "nodeRef", "p50Ms", "p95Ms", "p99Ms"],
+      "properties": {
+        "id": { "type": "string" },
+        "nodeRef": {
+          "type": "string",
+          "pattern": "^#/eventTrees/[^/]+(/nodes/[^/]+)?$"
+        },
+        "p50Ms": { "type": "number", "exclusiveMinimum": 0 },
+        "p95Ms": { "type": "number", "exclusiveMinimum": 0 },
+        "p99Ms": { "type": "number", "exclusiveMinimum": 0 },
+        "maxConcurrency": { "type": "integer", "exclusiveMinimum": 0 },
+        "expectedRatePerSecond": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

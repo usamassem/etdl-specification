@@ -53,6 +53,14 @@
     "reliabilityBuildProvenance": {
       "$ref": "#/$defs/buildProvenance"
     },
+    "predictions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/prediction" }
+    },
+    "calibrationResults": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/calibrationResult" }
+    },
     "x-*": {}
   },
   "$defs": {
@@ -199,6 +207,73 @@
         "compiler": { "type": "string" }
       },
       "additionalProperties": false
+    },
+    "predictiveModel": {
+      "type": "object",
+      "required": ["family", "parameters"],
+      "properties": {
+        "family": { "enum": ["exponential", "weibull"] },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "assumptions": { "type": "array", "items": { "type": "string" } },
+        "validRange": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "additionalProperties": false
+    },
+    "prediction": {
+      "type": "object",
+      "required": ["id", "event", "quantity", "value", "missionTime", "model"],
+      "properties": {
+        "id": { "type": "string" },
+        "event": { "type": "string" },
+        "quantity": {
+          "enum": ["survival", "reliability", "failure-probability", "hazard", "cumulative-hazard", "density"]
+        },
+        "value": { "type": "number" },
+        "missionTime": {
+          "type": "object",
+          "required": ["value", "unit"],
+          "properties": {
+            "value": { "type": "number", "minimum": 0 },
+            "unit": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "model": { "$ref": "#/$defs/predictiveModel" },
+        "conditions": { "type": "array", "items": { "type": "string" } },
+        "extrapolated": { "type": "boolean" },
+        "sourceEstimate": { "type": "string" },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      },
+      "additionalProperties": { "patternProperties": { "^x-": {} } }
+    },
+    "calibrationResult": {
+      "type": "object",
+      "required": ["id", "event", "predictedValue", "observedProportion", "method", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "event": { "type": "string" },
+        "predictedValue": { "type": "number" },
+        "observedFailures": { "type": "integer", "minimum": 0 },
+        "observedExposure": { "type": "integer", "minimum": 0 },
+        "observedProportion": { "type": "number", "minimum": 0, "maximum": 1 },
+        "method": { "type": "string" },
+        "methodVersion": { "type": "string" },
+        "pValue": { "type": "number", "minimum": 0, "maximum": 1 },
+        "status": {
+          "enum": ["consistent", "potential-deviation", "significant-deviation", "insufficient-data", "unsupported-comparison"]
+        },
+        "minimumExposure": { "type": "integer" },
+        "generatedAt": { "type": "string" }
+      },
+      "additionalProperties": { "patternProperties": { "^x-": {} } }
     }
   }
 }
